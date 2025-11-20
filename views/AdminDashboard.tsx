@@ -150,9 +150,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // --- NOTIFICATION LOGIC ---
   
   const enableAudio = () => {
-    playNotificationSound('order'); // Test sound
+    playNotificationSound('order'); // Test sound to unlock audio context
     setIsAudioEnabled(true);
-    localStorage.setItem('admin_sound_enabled', 'true'); // Sauvegarde
+    localStorage.setItem('admin_sound_enabled', 'true'); 
     setLastNotification("Notifications sonores activées !");
     setTimeout(() => setLastNotification(null), 3000);
   };
@@ -169,18 +169,32 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const playNotificationSound = (type: 'order' | 'alert' = 'order') => {
-    if (!isAudioEnabled && type !== 'order') return; // Si désactivé, on ne joue pas (sauf si c'est le test d'activation)
-
+    // On tente de créer le contexte même si désactivé pour le réveiller lors d'un clic utilisateur (cas de enableAudio)
     try {
       const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
       if (!AudioContext) return;
       
       const ctx = new AudioContext();
-      // Important: Si le contexte est suspendu (blocage navigateur), on essaie de le reprendre
+      
+      // CRITICAL: Toujours appeler resume() pour les navigateurs qui suspendent l'audio
       if (ctx.state === 'suspended') {
-          ctx.resume();
+          ctx.resume().then(() => {
+             // Lecture seulement si activé ou si c'est le test
+             if (isAudioEnabled || type === 'order') { 
+                startOscillator(ctx, type);
+             }
+          }).catch(e => console.error("Audio resume failed", e));
+      } else {
+          if (isAudioEnabled || type === 'order') {
+             startOscillator(ctx, type);
+          }
       }
+    } catch (e) {
+      console.error("Audio error", e);
+    }
+  };
 
+  const startOscillator = (ctx: AudioContext, type: 'order' | 'alert') => {
       const now = ctx.currentTime;
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
@@ -201,18 +215,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
          osc.start(now);
          osc.stop(now + 0.5);
       } else {
-         // Sonnette "Ding Dong" pour commande (Harmonieux et fort)
+         // Sonnette "Ding Dong" pour commande
          osc.type = 'sine';
          
-         // Premier Ton (Ding) - Mi (High)
+         // Premier Ton (Ding)
          osc.frequency.setValueAtTime(659.25, now); 
          gain.gain.setValueAtTime(0, now);
          gain.gain.linearRampToValueAtTime(0.5, now + 0.05);
          gain.gain.exponentialRampToValueAtTime(0.1, now + 0.6);
 
-         // Deuxième Ton (Dong) - Do (Low)
+         // Deuxième Ton (Dong)
          setTimeout(() => {
-             // On crée un nouvel oscillateur pour la 2ème note pour éviter les clics
              const osc2 = ctx.createOscillator();
              const gain2 = ctx.createGain();
              osc2.connect(gain2);
@@ -231,10 +244,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
          osc.start(now);
          osc.stop(now + 0.8);
       }
-      
-    } catch (e) {
-      console.error("Audio error", e);
-    }
   };
 
   // Order Notification
@@ -245,41 +254,36 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       return;
     }
 
-    // Détecter une NOUVELLE commande
+    // Détecter une NOUVELLE commande (augmentation du nombre)
     if (orders.length > prevOrderCountRef.current) {
-      const newOrder = orders[0]; // Assuming new orders are at index 0 due to sorting
+      const newOrder = orders[0]; // Supposant que c'est la plus récente grâce au tri
       
-      // Jouer le son seulement si activé
-      if (isAudioEnabled) {
-        playNotificationSound('order');
-      }
+      // Jouer le son immédiatement
+      console.log("Nouvelle commande détectée, tentative de lecture audio...");
+      playNotificationSound('order');
       
       setAlertLevel('info');
-      setLastNotification(`NOUVELLE COMMANDE : ${newOrder.totalPrice.toLocaleString()} FCFA`);
+      setLastNotification(`NOUVELLE COMMANDE : ${newOrder?.totalPrice?.toLocaleString() || '...'} FCFA`);
     }
     prevOrderCountRef.current = orders.length;
-  }, [orders.length, isAudioEnabled]);
+  }, [orders.length]); // Retrait de isAudioEnabled des dépendances pour éviter re-trigger
 
   // Stock Alert Notification
   useEffect(() => {
      const criticalItems = inventory.filter(item => item.quantity <= item.threshold);
      if (criticalItems.length > 0) {
-         // Check if we haven't already alerted recently (could optimize this with a ref)
          const message = `ALERTE STOCK: ${criticalItems.length} produit(s) en rupture ou seuil critique !`;
          if (lastNotification !== message) {
-             if (isAudioEnabled) {
-               playNotificationSound('alert');
-             }
+             playNotificationSound('alert');
              setAlertLevel('critical');
              setLastNotification(message);
-             // Alert remains visible longer for critical issues
              setTimeout(() => setLastNotification(null), 8000);
          }
      }
-  }, [inventory, isAudioEnabled]);
+  }, [inventory]);
 
 
-  // --- HANDLERS ---
+  // --- HANDLERS (unchanged) ---
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1064,7 +1068,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
        {/* Mobile Sidebar Overlay */}
        {isMobileMenuOpen && (
-         <div className="fixed inset-0 z-50 flex md:hidden">
+         <div className="fixed inset-0 z-[100] flex md:hidden">
            {/* Backdrop */}
            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsMobileMenuOpen(false)}></div>
            
@@ -1136,7 +1140,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
        {/* Main Content */}
        <div className="flex-1 p-4 md:p-8 overflow-y-auto h-[calc(100vh-64px)]">
          {/* Mobile Header with Toggle */}
-         <div className="md:hidden flex items-center justify-between bg-white p-4 rounded-xl shadow-sm border border-slate-200 mb-6">
+         <div className="md:hidden flex items-center justify-between bg-white p-4 rounded-xl shadow-sm border border-slate-200 mb-6 sticky top-0 z-10">
              <div className="flex items-center gap-2">
                <h1 className="font-bold text-lg text-slate-900">
                  {activeTab === 'overview' && 'Rapports'}
