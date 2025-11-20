@@ -6,7 +6,7 @@ import {
 } from 'recharts';
 import { 
   LayoutDashboard, Users, ShoppingBag, FileText, TrendingUp, CheckCircle, 
-  AlertTriangle, Trash2, Megaphone, Search, ShieldCheck, Plus, X, Image as ImageIcon, Pencil, Utensils, Truck, Volume2, Bell, UserPlus, Phone, MapPin, Lock, Settings, Save, Package, AlertOctagon, VolumeX
+  AlertTriangle, Trash2, Megaphone, Search, ShieldCheck, Plus, X, Image as ImageIcon, Pencil, Utensils, Truck, Volume2, Bell, UserPlus, Phone, MapPin, Lock, Settings, Save, Package, AlertOctagon, VolumeX, Menu
 } from 'lucide-react';
 
 interface AdminDashboardProps {
@@ -52,13 +52,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
   const [searchTerm, setSearchTerm] = useState('');
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // --- Notification State ---
   const prevOrderCountRef = useRef(orders.length);
   const isFirstRender = useRef(true);
   const [lastNotification, setLastNotification] = useState<string | null>(null);
   const [alertLevel, setAlertLevel] = useState<'info' | 'warning' | 'critical'>('info');
-  const [isAudioEnabled, setIsAudioEnabled] = useState(false);
+  
+  // Initialisation avec localStorage pour se souvenir du choix
+  const [isAudioEnabled, setIsAudioEnabled] = useState(() => {
+    return localStorage.getItem('admin_sound_enabled') === 'true';
+  });
 
   // --- Form States for Menu Management ---
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -144,15 +149,28 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // --- NOTIFICATION LOGIC ---
   
-  // Fonction d'activation du son (Doit être appelée par un clic utilisateur)
   const enableAudio = () => {
     playNotificationSound('order'); // Test sound
     setIsAudioEnabled(true);
+    localStorage.setItem('admin_sound_enabled', 'true'); // Sauvegarde
     setLastNotification("Notifications sonores activées !");
     setTimeout(() => setLastNotification(null), 3000);
   };
 
+  const toggleAudio = () => {
+    if (isAudioEnabled) {
+      setIsAudioEnabled(false);
+      localStorage.setItem('admin_sound_enabled', 'false');
+      setLastNotification("Notifications sonores désactivées.");
+      setTimeout(() => setLastNotification(null), 3000);
+    } else {
+      enableAudio();
+    }
+  };
+
   const playNotificationSound = (type: 'order' | 'alert' = 'order') => {
+    if (!isAudioEnabled && type !== 'order') return; // Si désactivé, on ne joue pas (sauf si c'est le test d'activation)
+
     try {
       const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
       if (!AudioContext) return;
@@ -231,17 +249,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     if (orders.length > prevOrderCountRef.current) {
       const newOrder = orders[0]; // Assuming new orders are at index 0 due to sorting
       
-      // Jouer le son seulement si activé (ou tenter de jouer)
-      playNotificationSound('order');
+      // Jouer le son seulement si activé
+      if (isAudioEnabled) {
+        playNotificationSound('order');
+      }
       
       setAlertLevel('info');
       setLastNotification(`NOUVELLE COMMANDE : ${newOrder.totalPrice.toLocaleString()} FCFA`);
-      
-      // Force la mise à jour visuelle immédiate
-      // Le son peut être bloqué par le navigateur si aucune interaction n'a eu lieu
     }
     prevOrderCountRef.current = orders.length;
-  }, [orders.length]);
+  }, [orders.length, isAudioEnabled]);
 
   // Stock Alert Notification
   useEffect(() => {
@@ -250,14 +267,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
          // Check if we haven't already alerted recently (could optimize this with a ref)
          const message = `ALERTE STOCK: ${criticalItems.length} produit(s) en rupture ou seuil critique !`;
          if (lastNotification !== message) {
-             playNotificationSound('alert');
+             if (isAudioEnabled) {
+               playNotificationSound('alert');
+             }
              setAlertLevel('critical');
              setLastNotification(message);
              // Alert remains visible longer for critical issues
              setTimeout(() => setLastNotification(null), 8000);
          }
      }
-  }, [inventory]);
+  }, [inventory, isAudioEnabled]);
 
 
   // --- HANDLERS ---
@@ -410,7 +429,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
             )}
 
-            {/* Audio Permission Warning */}
+            {/* Audio Permission Warning - Seulement si désactivé */}
             {!isAudioEnabled && (
                <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 flex items-center justify-between">
                   <div className="flex items-center text-yellow-800">
@@ -988,8 +1007,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   return (
     <div className="flex min-h-[calc(100vh-64px)] bg-slate-50">
-       {/* Sidebar Admin */}
-       <div className="w-64 bg-slate-900 text-white hidden md:block sticky top-16 h-[calc(100vh-64px)] overflow-y-auto">
+       {/* Sidebar Desktop */}
+       <div className="w-64 bg-slate-900 text-white hidden md:block sticky top-16 h-[calc(100vh-64px)] overflow-y-auto z-20">
          <div className="p-6">
            <div className="flex items-center gap-3 mb-8">
              <div className="w-10 h-10 rounded-lg bg-indigo-600 flex items-center justify-center">
@@ -1003,7 +1022,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
            
            <div className="mb-6">
               <button 
-                onClick={enableAudio} 
+                onClick={toggleAudio} 
                 className={`w-full flex items-center justify-center px-3 py-2 rounded-lg text-xs font-bold transition-all ${isAudioEnabled ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}
               >
                 {isAudioEnabled ? <Volume2 className="w-4 h-4 mr-2" /> : <VolumeX className="w-4 h-4 mr-2" />}
@@ -1043,9 +1062,101 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
          </div>
        </div>
 
+       {/* Mobile Sidebar Overlay */}
+       {isMobileMenuOpen && (
+         <div className="fixed inset-0 z-50 flex md:hidden">
+           {/* Backdrop */}
+           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsMobileMenuOpen(false)}></div>
+           
+           {/* Sidebar Content */}
+           <div className="relative bg-slate-900 w-72 h-full shadow-2xl flex flex-col overflow-y-auto animate-in slide-in-from-left duration-300">
+             <div className="p-6">
+               <div className="flex items-center justify-between mb-8 text-white">
+                 <div className="flex items-center gap-3">
+                   <div className="w-10 h-10 rounded-lg bg-indigo-600 flex items-center justify-center">
+                     <LayoutDashboard className="w-6 h-6 text-white" />
+                   </div>
+                   <div>
+                     <h2 className="font-bold">ADMIN</h2>
+                     <p className="text-xs text-slate-400">{appSettings.appName}</p>
+                   </div>
+                 </div>
+                 <button onClick={() => setIsMobileMenuOpen(false)} className="text-slate-400 hover:text-white">
+                   <X className="w-6 h-6" />
+                 </button>
+               </div>
+               
+               <div className="mb-6">
+                  <button 
+                    onClick={toggleAudio} 
+                    className={`w-full flex items-center justify-center px-3 py-3 rounded-lg text-xs font-bold transition-all ${isAudioEnabled ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-slate-400'}`}
+                  >
+                    {isAudioEnabled ? <Volume2 className="w-4 h-4 mr-2" /> : <VolumeX className="w-4 h-4 mr-2" />}
+                    {isAudioEnabled ? 'Son Activé' : 'Activer Son'}
+                  </button>
+               </div>
+
+               <nav className="space-y-2">
+                 {[
+                   { id: 'overview', label: 'Rapports & Stats', icon: FileText },
+                   { id: 'orders', label: 'Commandes', icon: Truck, badge: pendingOrdersCount },
+                   { id: 'menu', label: 'Gestion du Menu', icon: Utensils },
+                   { id: 'inventory', label: 'Stocks & Inventaire', icon: Package, badge: lowStockItems.length, alert: lowStockItems.length > 0 },
+                   { id: 'users', label: 'Utilisateurs', icon: Users },
+                   { id: 'transactions', label: 'Transactions', icon: LayoutDashboard },
+                   { id: 'settings', label: 'Paramètres', icon: Settings },
+                 ].map((item: any) => (
+                   <button
+                     key={item.id}
+                     onClick={() => {
+                       setActiveTab(item.id as AdminTab);
+                       setIsMobileMenuOpen(false);
+                     }}
+                     className={`w-full flex items-center px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
+                       activeTab === item.id 
+                         ? 'bg-indigo-600 text-white' 
+                         : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+                     }`}
+                   >
+                     <item.icon className={`w-5 h-5 mr-3 ${item.alert ? 'text-red-500 animate-pulse' : ''}`} />
+                     {item.label}
+                     {item.badge > 0 && (
+                        <span className={`ml-auto text-white text-xs px-2 py-0.5 rounded-full ${item.alert ? 'bg-red-600 animate-pulse' : 'bg-red-500'}`}>
+                          {item.badge}
+                        </span>
+                     )}
+                   </button>
+                 ))}
+               </nav>
+             </div>
+           </div>
+         </div>
+       )}
+
        {/* Main Content */}
-       <div className="flex-1 p-8 overflow-y-auto h-[calc(100vh-64px)]">
-         <div className="mb-8 flex justify-between items-center">
+       <div className="flex-1 p-4 md:p-8 overflow-y-auto h-[calc(100vh-64px)]">
+         {/* Mobile Header with Toggle */}
+         <div className="md:hidden flex items-center justify-between bg-white p-4 rounded-xl shadow-sm border border-slate-200 mb-6">
+             <div className="flex items-center gap-2">
+               <h1 className="font-bold text-lg text-slate-900">
+                 {activeTab === 'overview' && 'Rapports'}
+                 {activeTab === 'orders' && 'Commandes'}
+                 {activeTab === 'users' && 'Utilisateurs'}
+                 {activeTab === 'menu' && 'Menu'}
+                 {activeTab === 'inventory' && 'Stocks'}
+                 {activeTab === 'transactions' && 'Transactions'}
+                 {activeTab === 'settings' && 'Paramètres'}
+               </h1>
+             </div>
+             <button 
+               onClick={() => setIsMobileMenuOpen(true)}
+               className="p-2 bg-slate-100 rounded-lg text-slate-700 hover:bg-slate-200"
+             >
+               <Menu className="w-6 h-6" />
+             </button>
+         </div>
+
+         <div className="hidden md:flex mb-8 justify-between items-center">
            <h1 className="text-2xl font-bold text-slate-900">
              {activeTab === 'overview' && 'Rapports & Statistiques'}
              {activeTab === 'orders' && 'Gestion des Commandes'}
