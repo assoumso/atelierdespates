@@ -6,7 +6,7 @@ import {
 } from 'recharts';
 import { 
   LayoutDashboard, Users, ShoppingBag, FileText, TrendingUp, CheckCircle, 
-  AlertTriangle, Trash2, Megaphone, Search, ShieldCheck, Plus, X, Image as ImageIcon, Pencil, Utensils, Truck, Volume2, Bell, UserPlus, Phone, MapPin, Lock, Settings, Save, Package, AlertOctagon, VolumeX, Menu
+  AlertTriangle, Trash2, Megaphone, Search, ShieldCheck, Plus, X, Image as ImageIcon, Pencil, Utensils, Truck, Volume2, Bell, UserPlus, Phone, MapPin, Lock, Settings, Save, Package, AlertOctagon, VolumeX, Menu, PlayCircle
 } from 'lucide-react';
 
 interface AdminDashboardProps {
@@ -60,10 +60,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [lastNotification, setLastNotification] = useState<string | null>(null);
   const [alertLevel, setAlertLevel] = useState<'info' | 'warning' | 'critical'>('info');
   
-  // Initialisation avec localStorage pour se souvenir du choix
+  // --- AUDIO STATE ---
+  // Modification: Activé par défaut sauf si explicitement désactivé ('false')
   const [isAudioEnabled, setIsAudioEnabled] = useState(() => {
-    return localStorage.getItem('admin_sound_enabled') === 'true';
+    const saved = localStorage.getItem('admin_sound_enabled');
+    return saved !== 'false'; 
   });
+  
+  // Référence persistante pour le contexte audio (Mobile Fix)
+  const audioContextRef = useRef<AudioContext | null>(null);
 
   // --- Form States for Menu Management ---
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -147,50 +152,62 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     item.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // --- NOTIFICATION LOGIC ---
+  // --- AUDIO LOGIC ---
   
-  const enableAudio = () => {
-    playNotificationSound('order'); // Test sound to unlock audio context
-    setIsAudioEnabled(true);
-    localStorage.setItem('admin_sound_enabled', 'true'); 
-    setLastNotification("Notifications sonores activées !");
-    setTimeout(() => setLastNotification(null), 3000);
+  // Fonction pour initialiser/réveiller le contexte audio (Doit être appelé sur un événement utilisateur)
+  const unlockAudioContext = () => {
+      if (!audioContextRef.current) {
+          const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+          if (AudioContext) {
+              audioContextRef.current = new AudioContext();
+          }
+      }
+
+      // Tenter de reprendre si suspendu (cas fréquent sur mobile)
+      if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+          audioContextRef.current.resume().then(() => {
+              console.log("AudioContext resumed successfully");
+          }).catch(e => console.error("Failed to resume AudioContext", e));
+      }
   };
 
-  const toggleAudio = () => {
-    if (isAudioEnabled) {
-      setIsAudioEnabled(false);
-      localStorage.setItem('admin_sound_enabled', 'false');
-      setLastNotification("Notifications sonores désactivées.");
-      setTimeout(() => setLastNotification(null), 3000);
-    } else {
-      enableAudio();
-    }
+  const enableAudio = () => {
+    unlockAudioContext(); // Important : Initialise le contexte
+    playNotificationSound('order'); // Test immédiat
+    setIsAudioEnabled(true);
+    localStorage.setItem('admin_sound_enabled', 'true'); 
+    setLastNotification("Son activé !");
+    setTimeout(() => setLastNotification(null), 2000);
+  };
+
+  const disableAudio = () => {
+    setIsAudioEnabled(false);
+    localStorage.setItem('admin_sound_enabled', 'false');
   };
 
   const playNotificationSound = (type: 'order' | 'alert' = 'order') => {
-    // On tente de créer le contexte même si désactivé pour le réveiller lors d'un clic utilisateur (cas de enableAudio)
+    if (!isAudioEnabled) return;
+
     try {
-      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
-      if (!AudioContext) return;
-      
-      const ctx = new AudioContext();
-      
-      // CRITICAL: Toujours appeler resume() pour les navigateurs qui suspendent l'audio
-      if (ctx.state === 'suspended') {
-          ctx.resume().then(() => {
-             // Lecture seulement si activé ou si c'est le test
-             if (isAudioEnabled || type === 'order') { 
-                startOscillator(ctx, type);
-             }
-          }).catch(e => console.error("Audio resume failed", e));
-      } else {
-          if (isAudioEnabled || type === 'order') {
-             startOscillator(ctx, type);
-          }
+      // Assurer que le contexte existe
+      if (!audioContextRef.current) {
+         const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+         if (AudioContext) {
+             audioContextRef.current = new AudioContext();
+         }
       }
+
+      const ctx = audioContextRef.current;
+      if (!ctx) return;
+
+      // Force resume si suspendu (re-tentative auto)
+      if (ctx.state === 'suspended') {
+          ctx.resume().catch(e => console.error("Auto-resume failed:", e));
+      }
+
+      startOscillator(ctx, type);
     } catch (e) {
-      console.error("Audio error", e);
+      console.error("Audio playback error:", e);
     }
   };
 
@@ -254,19 +271,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       return;
     }
 
-    // Détecter une NOUVELLE commande (augmentation du nombre)
+    // Détecter une NOUVELLE commande
     if (orders.length > prevOrderCountRef.current) {
-      const newOrder = orders[0]; // Supposant que c'est la plus récente grâce au tri
+      const newOrder = orders[0];
       
-      // Jouer le son immédiatement
-      console.log("Nouvelle commande détectée, tentative de lecture audio...");
+      console.log("Nouvelle commande détectée !");
       playNotificationSound('order');
       
       setAlertLevel('info');
       setLastNotification(`NOUVELLE COMMANDE : ${newOrder?.totalPrice?.toLocaleString() || '...'} FCFA`);
     }
     prevOrderCountRef.current = orders.length;
-  }, [orders.length]); // Retrait de isAudioEnabled des dépendances pour éviter re-trigger
+  }, [orders.length]); 
 
   // Stock Alert Notification
   useEffect(() => {
@@ -431,26 +447,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
                 <button onClick={() => setLastNotification(null)}><X className="w-5 h-5" /></button>
               </div>
-            )}
-
-            {/* Audio Permission Warning - Seulement si désactivé */}
-            {!isAudioEnabled && (
-               <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 flex items-center justify-between">
-                  <div className="flex items-center text-yellow-800">
-                     <VolumeX className="w-6 h-6 mr-3" />
-                     <div>
-                        <h4 className="font-bold">Son Désactivé</h4>
-                        <p className="text-sm">Pour entendre la sonnerie des nouvelles commandes, veuillez activer le son.</p>
-                     </div>
-                  </div>
-                  <button 
-                    onClick={enableAudio}
-                    className="bg-yellow-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-yellow-700 transition-colors flex items-center"
-                  >
-                    <Volume2 className="w-4 h-4 mr-2" />
-                    Activer le son
-                  </button>
-               </div>
             )}
 
             {/* Stock Alert Card */}
@@ -916,6 +912,47 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         return (
            <div className="space-y-6 max-w-4xl">
               <h3 className="text-lg font-bold text-slate-900">Paramètres Généraux</h3>
+              
+              {/* SECTION AUDIO / NOTIFICATIONS (AJOUTÉE) */}
+              <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                 <h4 className="font-bold text-slate-800 mb-4 flex items-center">
+                    <Volume2 className="w-5 h-5 mr-2 text-indigo-600" /> Notifications & Sonore
+                 </h4>
+                 <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg border border-slate-100">
+                    <div>
+                       <p className="font-bold text-slate-900">Alertes Sonores</p>
+                       <p className="text-sm text-slate-600">
+                         Jouer un son lors d'une nouvelle commande ou d'une rupture de stock.
+                       </p>
+                       {!isAudioEnabled && (
+                         <p className="text-xs text-orange-600 mt-1 font-bold">
+                           Le son est actuellement désactivé.
+                         </p>
+                       )}
+                    </div>
+                    <div className="flex items-center gap-4">
+                       {/* BOUTON TEST / UNLOCK POUR MOBILE */}
+                       <button 
+                         type="button"
+                         onClick={enableAudio}
+                         className="flex items-center px-3 py-2 bg-indigo-100 text-indigo-700 text-xs font-bold rounded-lg hover:bg-indigo-200 transition-colors"
+                         title="Cliquez ici si vous n'entendez pas de son sur mobile"
+                       >
+                         <PlayCircle className="w-4 h-4 mr-1" />
+                         Tester / Débloquer Audio
+                       </button>
+
+                       <button 
+                          type="button"
+                          onClick={() => isAudioEnabled ? disableAudio() : enableAudio()}
+                          className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${isAudioEnabled ? 'bg-emerald-500' : 'bg-slate-300'}`}
+                       >
+                          <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${isAudioEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
+                       </button>
+                    </div>
+                 </div>
+              </div>
+
               <form onSubmit={handleSaveSettings} className="space-y-6">
                  
                  {/* Identité */}
@@ -1024,16 +1061,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
              </div>
            </div>
            
-           <div className="mb-6">
-              <button 
-                onClick={toggleAudio} 
-                className={`w-full flex items-center justify-center px-3 py-2 rounded-lg text-xs font-bold transition-all ${isAudioEnabled ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}
-              >
-                {isAudioEnabled ? <Volume2 className="w-4 h-4 mr-2" /> : <VolumeX className="w-4 h-4 mr-2" />}
-                {isAudioEnabled ? 'Son Activé' : 'Activer Son'}
-              </button>
-           </div>
-
            <nav className="space-y-2">
              {[
                { id: 'overview', label: 'Rapports & Stats', icon: FileText },
@@ -1090,16 +1117,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                  </button>
                </div>
                
-               <div className="mb-6">
-                  <button 
-                    onClick={toggleAudio} 
-                    className={`w-full flex items-center justify-center px-3 py-3 rounded-lg text-xs font-bold transition-all ${isAudioEnabled ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-slate-400'}`}
-                  >
-                    {isAudioEnabled ? <Volume2 className="w-4 h-4 mr-2" /> : <VolumeX className="w-4 h-4 mr-2" />}
-                    {isAudioEnabled ? 'Son Activé' : 'Activer Son'}
-                  </button>
-               </div>
-
                <nav className="space-y-2">
                  {[
                    { id: 'overview', label: 'Rapports & Stats', icon: FileText },

@@ -42,8 +42,8 @@ const App: React.FC = () => {
     contactPhone: '+225 07 00 00 00 00',
     contactAddress: 'Abidjan, Côte d\'Ivoire',
     currency: 'FCFA',
-    defaultShippingFees: 300,
-    serviceFees: 200,
+    defaultShippingFees: 0,
+    serviceFees: 0,
     isMaintenanceMode: false
   });
 
@@ -63,7 +63,7 @@ const App: React.FC = () => {
         console.log("Authentification Firebase réussie");
       } catch (error: any) {
         if (error.code === 'auth/configuration-not-found' || error.code === 'auth/operation-not-allowed') {
-             console.log("Mode Public actif (Authentification anonyme non activée sur le projet Firebase).");
+             // Silently ignore
         } else {
              console.warn("Avertissement Auth Firebase:", error.message);
         }
@@ -343,13 +343,8 @@ const App: React.FC = () => {
   const handleCreateOrder = async (newOrder: Order) => {
     try {
       const { id, ...orderData } = newOrder;
-      // Utiliser les frais définis dans les paramètres globaux si non spécifiés (fallback)
-      const finalOrder = {
-          ...orderData,
-          serviceFees: newOrder.serviceFees || appSettings.serviceFees,
-          shippingFees: newOrder.shippingFees !== undefined ? newOrder.shippingFees : appSettings.defaultShippingFees
-      };
-      const sanitizedOrder = JSON.parse(JSON.stringify(finalOrder));
+      // On n'ajoute plus de frais par défaut, on prend ce qui est dans l'objet commande (qui sera 0)
+      const sanitizedOrder = JSON.parse(JSON.stringify(orderData));
       await addDoc(collection(db, 'Commandes'), sanitizedOrder);
     } catch (error: any) {
       console.error("Erreur création commande:", error);

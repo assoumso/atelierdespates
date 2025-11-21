@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { Product, Supplier, Order, OrderStatus, PaymentDetails, DiningMode } from '../types';
-import { Search, Filter, Tag, X, MessageSquare, ShoppingBag, Smartphone, CreditCard, Banknote, MapPin, User, Phone, Bell, AlertCircle, Utensils, CheckCircle } from 'lucide-react';
+import { Search, Filter, Tag, X, ShoppingBag, Smartphone, CreditCard, Banknote, MapPin, User, Phone, Bell, AlertCircle, Utensils, CheckCircle } from 'lucide-react';
 
 interface ClientMarketplaceProps {
   products: Product[];
@@ -36,11 +36,6 @@ export const ClientMarketplace: React.FC<ClientMarketplaceProps> = ({ products, 
 
   const categories = ['Tout', ...Array.from(new Set(products.map(p => p.category)))];
   
-  // --- CONSTANTES FINANCIÈRES ---
-  // Frais de livraison offerts si sur place
-  const SHIPPING_FEES = diningMode === 'SUR_PLACE' ? 0 : 300;
-  const SERVICE_FEES = 200;
-
   // Filter Products
   const filteredProducts = useMemo(() => {
     return products.filter(product => {
@@ -96,9 +91,8 @@ export const ClientMarketplace: React.FC<ClientMarketplaceProps> = ({ products, 
     setErrorMessage(null);
     
     try {
-      const productTotal = selectedProduct.price * orderQuantity;
-      // Calcul du total incluant Livraison + Service
-      const totalAmount = productTotal + SHIPPING_FEES + SERVICE_FEES;
+      // Calcul du total (Prix * Quantité uniquement)
+      const totalAmount = selectedProduct.price * orderQuantity;
 
       let finalPaymentDetails: PaymentDetails;
 
@@ -121,8 +115,8 @@ export const ClientMarketplace: React.FC<ClientMarketplaceProps> = ({ products, 
           productName: selectedProduct.name,
           quantity: orderQuantity,
           totalPrice: totalAmount,
-          shippingFees: SHIPPING_FEES,
-          serviceFees: SERVICE_FEES, // Ajout des frais de service
+          shippingFees: 0,
+          serviceFees: 0,
           supplierId: selectedProduct.supplierId,
           customerName: clientInfo.name || 'Anonyme',
           customerContact: clientInfo.contact || 'Non spécifié',
@@ -432,25 +426,18 @@ export const ClientMarketplace: React.FC<ClientMarketplaceProps> = ({ products, 
                      </div>
                   </div>
 
-                  {/* Résumé des coûts AVEC FRAIS DE SERVICE */}
+                  {/* Résumé des coûts SIMPLIFIÉ */}
                   <div className="bg-slate-50 rounded-lg p-4 space-y-2 border border-slate-200 mt-4">
                      <div className="flex justify-between text-sm text-slate-600">
                        <span>Sous-total</span>
                        <span>{(selectedProduct.price * orderQuantity).toLocaleString()} FCFA</span>
                      </div>
-                     {diningMode === 'EMPORTE' && (
-                        <div className="flex justify-between text-sm text-slate-600">
-                           <span>Frais d'emballage/livraison</span>
-                           <span>{SHIPPING_FEES.toLocaleString()} FCFA</span>
-                        </div>
-                     )}
-                     <div className="flex justify-between text-sm text-slate-600">
-                       <span>Frais de service</span>
-                       <span>{SERVICE_FEES.toLocaleString()} FCFA</span>
-                     </div>
+                     
+                     {/* FRAIS SUPPRIMÉS */}
+                     
                      <div className="border-t border-slate-200 pt-2 flex justify-between font-bold text-slate-900 text-lg">
                        <span>Total à payer</span>
-                       <span>{((selectedProduct.price * orderQuantity) + SHIPPING_FEES + SERVICE_FEES).toLocaleString()} FCFA</span>
+                       <span>{(selectedProduct.price * orderQuantity).toLocaleString()} FCFA</span>
                      </div>
                   </div>
 
@@ -472,7 +459,7 @@ export const ClientMarketplace: React.FC<ClientMarketplaceProps> = ({ products, 
                 <div className="space-y-6">
                    <div className="text-center mb-4">
                       <p className="text-sm text-slate-500">Montant total de la commande</p>
-                      <p className="text-3xl font-bold text-slate-900">{((selectedProduct.price * orderQuantity) + SHIPPING_FEES + SERVICE_FEES).toLocaleString()} FCFA</p>
+                      <p className="text-3xl font-bold text-slate-900">{(selectedProduct.price * orderQuantity).toLocaleString()} FCFA</p>
                    </div>
 
                    <div>
