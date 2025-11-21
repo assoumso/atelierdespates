@@ -4,7 +4,7 @@ import { Product, Order, OrderStatus, Message } from '../types';
 import { 
   Plus, Sparkles, X, Package, ShoppingCart, DollarSign, 
   MessageSquare, Settings, CheckCircle, AlertCircle, 
-  Truck, Clock, Trash2, UploadCloud, Smartphone, Rocket, Banknote, Image as ImageIcon, Phone, MapPin, Bell, Volume2, Pencil, Play, Utensils, ShoppingBag
+  Truck, Clock, Trash2, UploadCloud, Smartphone, Rocket, Banknote, Image as ImageIcon, Phone, MapPin, Bell, Volume2, Pencil, Play, Utensils, ShoppingBag, Power, PlayCircle
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
@@ -39,6 +39,9 @@ export const SupplierDashboard: React.FC<SupplierDashboardProps> = ({
     return myProducts.length === 0 ? 'products' : 'overview';
   });
 
+  // --- Interaction State (Splash Screen) ---
+  const [hasInteracted, setHasInteracted] = useState(false);
+
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   
@@ -61,6 +64,9 @@ export const SupplierDashboard: React.FC<SupplierDashboardProps> = ({
   const isFirstRender = useRef(true);
   const [lastNotification, setLastNotification] = useState<string | null>(null);
   const [notificationPermission, setNotificationPermission] = useState('default');
+  
+  // Référence Audio Context
+  const audioContextRef = useRef<AudioContext | null>(null);
 
   // Vérification permission notification au montage
   useEffect(() => {
@@ -69,17 +75,43 @@ export const SupplierDashboard: React.FC<SupplierDashboardProps> = ({
     }
   }, []);
 
-  // Fonction pour demander la permission (doit être déclenchée par un clic)
+  // Fonction pour initialiser la session (Son + Vibration + Notification)
+  const initializeSession = () => {
+      unlockAudioContext();
+      playNotificationSound(); // Test sonore immédiat
+      
+      if (typeof navigator !== 'undefined' && navigator.vibrate) {
+          navigator.vibrate([200]);
+      }
+
+      requestNotificationPermission();
+      setHasInteracted(true);
+  };
+
+  const unlockAudioContext = () => {
+      if (!audioContextRef.current) {
+          const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+          if (AudioContext) {
+              audioContextRef.current = new AudioContext();
+          }
+      }
+      if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+          audioContextRef.current.resume().then(() => {
+             console.log("Audio Context Resumed");
+          }).catch(e => console.error(e));
+      }
+  };
+
+  // Fonction pour demander la permission
   const requestNotificationPermission = () => {
     if ('Notification' in window) {
       Notification.requestPermission().then(permission => {
         setNotificationPermission(permission);
         if (permission === 'granted') {
-          new Notification("Notifications activées", {
-            body: "Vous serez alerté ici à chaque nouvelle commande.",
+          new Notification("Atelier des pates", {
+            body: "Tableau de bord fournisseur actif.",
             icon: '/icon.png'
           });
-          playNotificationSound(); // Petit son de confirmation
         }
       });
     }
@@ -88,10 +120,13 @@ export const SupplierDashboard: React.FC<SupplierDashboardProps> = ({
   // Fonction améliorée pour jouer un son de notification (Double Bip)
   const playNotificationSound = () => {
     try {
-      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
-      if (!AudioContext) return;
-      
-      const ctx = new AudioContext();
+      if (!audioContextRef.current) {
+         const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+         if (AudioContext) audioContextRef.current = new AudioContext();
+      }
+
+      const ctx = audioContextRef.current;
+      if (!ctx) return;
       
       // Tentative de reprise si le contexte est suspendu
       if (ctx.state === 'suspended') {
@@ -174,15 +209,17 @@ export const SupplierDashboard: React.FC<SupplierDashboardProps> = ({
       const notifMsg = `Vous avez reçu une nouvelle commande de ${myOrders[0].totalPrice.toLocaleString()} FCFA !`;
       console.log("Nouvelle commande détectée ! Alerte...");
       
-      playNotificationSound();
-      triggerMobileAlert(notifMsg);
+      if (hasInteracted) {
+          playNotificationSound();
+          triggerMobileAlert(notifMsg);
+      }
       
       setLastNotification(notifMsg);
       setTimeout(() => setLastNotification(null), 10000); 
     }
 
     prevOrderCountRef.current = myOrders.length;
-  }, [myOrders.length]); 
+  }, [myOrders.length, hasInteracted]); 
 
   
   // --- Stats ---
@@ -333,6 +370,30 @@ export const SupplierDashboard: React.FC<SupplierDashboardProps> = ({
       </span>
     );
   };
+
+  // --- SPLASH SCREEN GUARD ---
+  if (!hasInteracted) {
+      return (
+          <div className="fixed inset-0 bg-slate-900 z-[999] flex flex-col items-center justify-center p-4 text-center">
+              <div className="bg-white rounded-2xl p-8 max-w-sm w-full shadow-2xl animate-in zoom-in duration-300">
+                  <div className="w-20 h-20 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center mx-auto mb-6">
+                      <Power className="w-10 h-10" />
+                  </div>
+                  <h2 className="text-2xl font-bold text-slate-900 mb-2">Démarrer le Service</h2>
+                  <p className="text-slate-500 mb-8">
+                      Activez le tableau de bord pour autoriser les sons et vibrations.
+                  </p>
+                  <button 
+                      onClick={initializeSession}
+                      className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-xl text-lg shadow-lg shadow-indigo-200 transition-transform transform hover:scale-105 flex items-center justify-center"
+                  >
+                      <PlayCircle className="w-6 h-6 mr-2" />
+                      Ouvrir mon Espace
+                  </button>
+              </div>
+          </div>
+      );
+  }
 
   // --- Render Content ---
   const renderContent = () => {
